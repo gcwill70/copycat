@@ -5,13 +5,13 @@ import os
 import subprocess
 import sys
 
-VERSION = "1.10"
+VERSION = "1.11"
 
-DEBUG=int(logging.DEBUG / 10)
-INFO=int(logging.INFO / 10)
-WARNING=int(logging.WARNING / 10)
-ERROR=int(logging.ERROR / 10)
-CRITICAL=int(logging.CRITICAL / 10)
+DEBUG = int(logging.DEBUG / 10)
+INFO = int(logging.INFO / 10)
+WARNING = int(logging.WARNING / 10)
+ERROR = int(logging.ERROR / 10)
+CRITICAL = int(logging.CRITICAL / 10)
 
 FORMATS = {
     1: "%(asctime)s:%(levelname)s:%(message)s",
@@ -19,18 +19,21 @@ FORMATS = {
     3: "%(message)s",
 }
 
-def process(patterns: list[str]):
+
+def process(patterns: list[str], ignores: list[str] = []):
     # find all matches
     logging.debug(f"finding files...")
     matches: list[str] = []
     for pattern in patterns:
         # ensure folder matches will return all files beneath it
-        if (os.path.isdir(pattern)):
+        if os.path.isdir(pattern):
             pattern += "/**/*.*"
-        elif (pattern.endswith("/**")):
+        elif pattern.endswith("/**"):
             pattern += "/*.*"
         logging.debug(f"parsing: {pattern}")
-        matches += glob.glob(pattern, recursive=True)
+        for match in glob.glob(pattern, recursive=True):
+            if not any(ignore in match for ignore in ignores):
+                matches.append(match)
     # concatenate matches
     logging.debug(f"concatenating...")
     content = ""
@@ -42,7 +45,7 @@ def process(patterns: list[str]):
             with open(match, "r", encoding="utf-8") as f:
                 file_content = f.read() + "\n\n\n"
                 content += file_content
-                num_lines = file_content.count('\n')
+                num_lines = file_content.count("\n")
             logging.info(f"{num_lines}\t{match}")
         except UnicodeDecodeError:
             logging.debug(f"skipping: {match}")
@@ -51,13 +54,14 @@ def process(patterns: list[str]):
             pass
     return content
 
+
 def copy_to_clipboard(content: str):
     try:
         process = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
         process.communicate(input=content.encode())
         process.stdin.close()
         process.wait()
-        num_lines = content.count('\n')
+        num_lines = content.count("\n")
         logging.info(f"copied {num_lines} lines to clipboard")
     except Exception:
         logging.error("clipboard copying is not available")
@@ -74,15 +78,15 @@ def main():
         help="File names, file paths, or glob patterns matching the files to concatenate. Defaults to current directory.",
     )
     parser.add_argument(
-        '--version',
-        action='version',
-        version=f'v{VERSION}',
-        help='Show the version number and exit'
+        "--version",
+        action="version",
+        version=f"v{VERSION}",
+        help="Show the version number and exit",
     )
     parser.add_argument(
         "--no-copy",
         action="store_true",
-        help="Do not copy results to clipboard and print instead."
+        help="Do not copy results to clipboard and print instead.",
     )
     parser.add_argument(
         "--log",
@@ -93,29 +97,36 @@ def main():
         type=int,
         choices=[DEBUG, INFO, WARNING, ERROR, CRITICAL],
         default=INFO,
-        help=f'''Logging level. Defaults to {INFO}.
+        help=f"""Logging level. Defaults to {INFO}.
         DEBUG={DEBUG}
         INFO={INFO}
         WARNING={WARNING}
         ERROR={ERROR}
-        CRITICAL={CRITICAL}'''
+        CRITICAL={CRITICAL}""",
     )
     parser.add_argument(
         "--log-format",
         type=int,
         choices=[1, 2, 3],
         default=3,
-        help=f'''Logging format. Defaults to 3.
+        help=f"""Logging format. Defaults to 3.
         1='DATE TIME:LEVEL:MESSAGE'
         2='LEVEL:MESSAGE'
         3='MESSAGE'
-        '''
+        """,
     )
     parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
-        help=f"Sets `--log-level {DEBUG} --log-format {DEBUG}`"
+        help=f"Sets `--log-level {DEBUG} --log-format {DEBUG}`",
+    )
+    parser.add_argument(
+        "-x",
+        "--ignore",
+        action="append",
+        default=[],
+        help="Ignore files matching this pattern. Can be provided multiple times.",
     )
 
     args = parser.parse_args()
@@ -134,7 +145,7 @@ def main():
     )
     logging.debug(f"{args}")
 
-    content = process(args.patterns)
+    content = process(args.patterns, args.ignore)
 
     if args.no_copy:
         print(content)
